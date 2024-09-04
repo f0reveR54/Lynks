@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"stepic-go-basic/cashe/pkg/db"
+	"stepic-go-basic/cashe/pkg/logger"
+	"stepic-go-basic/cashe/pkg/metrics"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -39,10 +41,13 @@ func (api *API) Endpoints() {
 }
 
 func (api *API) saveHandler(w http.ResponseWriter, r *http.Request) {
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	metrics.Metrics("savecache")
 
 	var mapping db.URL
 
@@ -55,7 +60,7 @@ func (api *API) saveHandler(w http.ResponseWriter, r *http.Request) {
 
 	api.db.SaveURL(r.Context(), response)
 
-	//logger.Logger.Info().Str("method", r.Method).Str("short_link", shortLink).Str("long_link", mapping.OriginalURL).Msg("Shortened link created")
+	logger.Logger.Info().Str("method", r.Method).Str("short_link", mapping.Short).Str("long_link", mapping.Orig).Msg("Shortened link created")
 
 	//response := map[string]string{"short_link": "https://lynks.org/" + shortLink}
 	//w.WriteHeader(http.StatusCreated)
@@ -65,15 +70,17 @@ func (api *API) saveHandler(w http.ResponseWriter, r *http.Request) {
 
 func (api *API) getHandler(w http.ResponseWriter, r *http.Request) {
 
+	metrics.Metrics("getcache")
+
 	shortLink := r.URL.Path[len("/"):]
 
-	println(shortLink)
+	//println(shortLink)
 
 	res, _ := api.db.GetOriginal(r.Context(), shortLink)
 
-	println(res)
+	//println(res)
 
-	//logger.Logger.Info().Str("method", r.Method).Str("short_link", shortLink).Str("long_link", res).Msg("Redirecting to long link")
+	logger.Logger.Info().Str("method", r.Method).Str("short_link", shortLink).Str("long_link", res).Msg("Redirecting to long link")
 
 	//http.Redirect(w, r, res, http.StatusFound)
 
