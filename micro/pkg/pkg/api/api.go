@@ -1,13 +1,13 @@
 package api
 
 import (
-	"bytes"
 	"encoding/json"
 	"math/rand"
 	"net/http"
 	"stepic-go-basic/micro/pkg/db"
 	"stepic-go-basic/micro/pkg/logger"
 	"stepic-go-basic/micro/pkg/metrics"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -52,7 +52,11 @@ func (api *API) addLinkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metrics.Metrics("shorten")
+	start := time.Now()
+	defer func() {
+		metrics.RequestDuration.WithLabelValues("shorten").Observe(time.Since(start).Seconds())
+		metrics.RequestCounter.WithLabelValues("shorten").Inc()
+	}()
 
 	var mapping URLMapping
 
@@ -65,13 +69,9 @@ func (api *API) addLinkHandler(w http.ResponseWriter, r *http.Request) {
 
 	response := db.URL{Short: "http://localhost:8080/" + shortLink, Orig: mapping.OriginalURL}
 
-	bytesRepresentation, _ := json.Marshal(response)
-
-	http.Post("http://localhost:8081/add", "application/json", bytes.NewBuffer(bytesRepresentation))
-
 	api.db.AddURL(r.Context(), response)
 
-	logger.Logger.Info().Str("method", r.Method).Str("short_link", shortLink).Str("long_link", mapping.OriginalURL).Msg("Shortened link created")
+	logger.Logger.Info().Str("short_link", shortLink).Str("long_link", mapping.OriginalURL).Msg("Shortened link created")
 
 	//response := map[string]string{"short_link": "https://lynks.org/" + shortLink}
 	//w.WriteHeader(http.StatusCreated)
@@ -81,27 +81,23 @@ func (api *API) addLinkHandler(w http.ResponseWriter, r *http.Request) {
 
 func (api *API) redirectHandler(w http.ResponseWriter, r *http.Request) {
 
-	metrics.Metrics("redirect")
+	start := time.Now()
+	defer func() {
+		metrics.RequestDuration.WithLabelValues("redirect").Observe(time.Since(start).Seconds())
+		metrics.RequestCounter.WithLabelValues("redirect").Inc()
+	}()
 
 	shortLink := r.URL.Path[len("/"):]
 
-	//println(shortLink)
+	println(shortLink)
 
-	resp, _ := http.Get("http://localhost:8081/" + shortLink)
+	res, _ := api.db.Redirect(r.Context(), shortLink)
 
-	var result string
+	println(res)
 
-	json.NewDecoder(resp.Body).Decode(&result)
+	logger.Logger.Info().Str("short_link", shortLink).Str("long_link", res).Msg("Redirecting to long link")
 
-	if result == "" {
-		result, _ = api.db.Redirect(r.Context(), shortLink)
-	}
-
-	//println(result)
-
-	logger.Logger.Info().Str("method", r.Method).Str("short_link", shortLink).Str("long_link", result).Msg("Redirecting to long link")
-
-	http.Redirect(w, r, result, http.StatusFound)
+	http.Redirect(w, r, res, http.StatusFound)
 
 	//response := map[string]string{"original_url": res}
 	//w.Header().Set("Content-Type", "application/json")
